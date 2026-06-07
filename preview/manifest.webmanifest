@@ -1,0 +1,19 @@
+{
+  "name": "AudioBook Тест",
+  "short_name": "AudioBook Тест",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f6f4ef",
+  "theme_color": "#111111",
+  "lang": "ru",
+  "description": "Офлайн-плеер MP3-аудиокниг для iPhone и Windows",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

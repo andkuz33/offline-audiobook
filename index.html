@@ -46,6 +46,7 @@
     <section id="playerView" class="view player hidden">
       <header class="player-topbar">
         <button id="backButton" class="ghost-button">← Назад</button>
+        <button id="reportButton" class="ghost-button">Отчёт</button>
       </header>
 
       <section class="player-art" aria-hidden="true">
@@ -71,11 +72,44 @@
           <p>Скорость</p>
           <div id="speedButtons" class="speed-buttons" aria-label="Скорость воспроизведения"></div>
         </div>
+
+        <div class="bookmark-block">
+          <div class="bookmark-head">
+            <p>Закладки</p>
+            <button id="addBookmarkButton" type="button" class="ghost-button">+ Закладка</button>
+          </div>
+          <div id="bookmarkList" class="bookmark-list" aria-label="Список закладок"></div>
+        </div>
       </section>
     </section>
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
+
+  <dialog id="bookmarkDialog" class="modal">
+    <div class="modal-card">
+      <h3 id="bookmarkDialogTitle">Комментарий к закладке</h3>
+      <p id="bookmarkDialogTime" class="modal-time"></p>
+      <textarea id="bookmarkNoteInput" class="modal-textarea" rows="4" placeholder="Введите комментарий (необязательно)"></textarea>
+      <div class="modal-actions">
+        <button type="button" id="bookmarkCancel" class="ghost-button">Отмена</button>
+        <button type="button" id="bookmarkSave" class="primary-button">Сохранить</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="reportDialog" class="modal modal-wide">
+    <div class="modal-card">
+      <h3>Отчёт о прослушивании</h3>
+      <div id="reportBody" class="report-body"></div>
+      <div class="modal-actions">
+        <button type="button" id="reportClose" class="ghost-button">Закрыть</button>
+        <button type="button" id="reportExport" class="ghost-button">Экспорт в текст</button>
+        <button type="button" id="reportSave" class="primary-button">Сохранить картинку</button>
+      </div>
+    </div>
+  </dialog>
+
   <audio id="audio" preload="metadata" playsinline></audio>
   <script src="app.js"></script>
 </body>

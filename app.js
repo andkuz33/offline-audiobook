@@ -3,12 +3,15 @@ const DB_VERSION = 1;
 const BOOK_STORE = "books";
 const FILE_STORE = "files";
 const RATES = [1, 1.25, 1.5, 2, 2.5];
+const SESSION_GAP_MS = 60000; // перерыв дольше минуты считается новым сеансом
+const MAX_SESSIONS = 500;
 
 const state = {
   books: [],
   currentBook: null,
   currentObjectUrl: null,
   saveTimer: null,
+  session: null,
   db: null
 };
 
@@ -31,15 +34,35 @@ const elements = {
   skipForwardButton: document.querySelector("#skipForwardButton"),
   playPauseButton: document.querySelector("#playPauseButton"),
   speedButtons: document.querySelector("#speedButtons"),
+  addBookmarkButton: document.querySelector("#addBookmarkButton"),
+  bookmarkList: document.querySelector("#bookmarkList"),
+  bookmarkDialog: document.querySelector("#bookmarkDialog"),
+  bookmarkDialogTitle: document.querySelector("#bookmarkDialogTitle"),
+  bookmarkDialogTime: document.querySelector("#bookmarkDialogTime"),
+  bookmarkNoteInput: document.querySelector("#bookmarkNoteInput"),
+  bookmarkSave: document.querySelector("#bookmarkSave"),
+  bookmarkCancel: document.querySelector("#bookmarkCancel"),
+  reportButton: document.querySelector("#reportButton"),
+  reportDialog: document.querySelector("#reportDialog"),
+  reportBody: document.querySelector("#reportBody"),
+  reportSave: document.querySelector("#reportSave"),
+  reportExport: document.querySelector("#reportExport"),
+  reportClose: document.querySelector("#reportClose"),
   audio: document.querySelector("#audio"),
   toast: document.querySelector("#toast")
 };
 
 window.addEventListener("DOMContentLoaded", init);
-window.addEventListener("beforeunload", persistCurrentBook);
+window.addEventListener("beforeunload", checkpoint);
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) persistCurrentBook();
+  if (document.hidden) checkpoint();
 });
+
+// Фиксируем прогресс и текущий сеанс (на случай выгрузки приложения из памяти).
+function checkpoint() {
+  if (!elements.audio.paused) markListening();
+  persistCurrentBook();
+}
 
 async function init() {
   try {
@@ -50,6 +73,7 @@ async function init() {
     configureMediaSession();
     registerServiceWorker();
     updateInstallHint();
+    await maybeResumeLastBook();
   } catch (error) {
     showToast(error.message || "Не удалось запустить приложение.");
   }
@@ -60,6 +84,8 @@ function bindEvents() {
   elements.emptyImportButton.addEventListener("click", () => elements.fileInput.click());
   elements.fileInput.addEventListener("change", handleFileSelection);
   elements.backButton.addEventListener("click", showLibrary);
+  elements.reportButton.addEventListener("click", openReport);
+  elements.addBookmarkButton.addEventListener("click", addBookmark);
   elements.playPauseButton.addEventListener("click", togglePlayPause);
   elements.skipBackButton.addEventListener("click", () => skipBy(-15));
   elements.skipForwardButton.addEventListener("click", () => skipBy(30));
@@ -74,22 +100,38 @@ function bindEvents() {
   });
 
   elements.audio.addEventListener("timeupdate", updatePlaybackUi);
-  elements.audio.addEventListener("loadedmetadata", updatePlaybackUi);
+  elements.audio.addEventListener("loadedmetadata", () => {
+    // Если iOS выгрузил медиа во время звонка, после перезагрузки
+    // возвращаемся на сохранённую позицию, а не в начало файла.
+    restoreSavedPosition();
+    updatePlaybackUi();
+  });
+  // iOS при входящем звонке/другом приложении может очистить буфер аудио.
+  // Запоминаем место заранее, чтобы кнопка на наушниках вернула нас туда.
+  elements.audio.addEventListener("emptied", () => {
+    if (state.currentBook && (elements.audio.currentTime || 0) > 1) {
+      state.currentBook.currentPosition = elements.audio.currentTime;
+    }
+  });
+  elements.audio.addEventListener("stalled", persistCurrentBook);
   elements.audio.addEventListener("play", () => {
     elements.playPauseButton.textContent = "II";
     elements.playPauseButton.setAttribute("aria-label", "Пауза");
+    markListening();
     startAutosave();
     updateMediaSessionPlaybackState();
   });
   elements.audio.addEventListener("pause", () => {
     elements.playPauseButton.textContent = "▶";
     elements.playPauseButton.setAttribute("aria-label", "Слушать");
+    markListening();
     persistCurrentBook();
     stopAutosave();
     updateMediaSessionPlaybackState();
   });
   elements.audio.addEventListener("ended", () => {
     if (!state.currentBook) return;
+    markListening();
     state.currentBook.currentPosition = safeDuration();
     state.currentBook.isFinished = true;
     persistCurrentBook();
@@ -132,7 +174,11 @@ async function handleFileSelection(event) {
       lastOpenedAt: Date.now(),
       createdAt: Date.now(),
       isFinished: false,
-      fileSize: file.size
+      fileSize: file.size,
+      bookmarks: [],
+      sessions: [],
+      firstStartedAt: null,
+      lastFinishedAt: null
     };
 
     await saveAudioFile(id, file);
@@ -151,6 +197,7 @@ async function openBook(id) {
   if (!book) return;
 
   await persistCurrentBook();
+  state.session = null;
   revokeCurrentObjectUrl();
 
   const file = await readAudioFile(book.id);
@@ -167,6 +214,7 @@ async function openBook(id) {
   elements.progressSlider.max = String(Math.max(book.duration, 1));
   elements.progressSlider.value = String(clamp(book.currentPosition || 0, 0, book.duration));
   updateRateButtons();
+  renderBookmarks();
   showPlayer();
 
   elements.audio.addEventListener("loadedmetadata", function onMetadata() {
@@ -175,6 +223,15 @@ async function openBook(id) {
     updatePlaybackUi();
     updateMediaSessionPlaybackState();
   });
+}
+
+// При запуске открываем последнюю книгу в процессе, чтобы кнопку на наушниках
+// можно было нажать сразу — даже после полной выгрузки приложения из памяти.
+async function maybeResumeLastBook() {
+  const last = [...state.books]
+    .filter(book => (book.currentPosition || 0) > 1 && !book.isFinished)
+    .sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)[0];
+  if (last) await openBook(last.id);
 }
 
 function showPlayer() {
@@ -192,13 +249,34 @@ async function showLibrary() {
 async function togglePlayPause() {
   if (!state.currentBook) return;
   if (elements.audio.paused) {
-    try {
-      await elements.audio.play();
-    } catch {
-      showToast("Не удалось начать воспроизведение.");
-    }
+    await playCurrent();
   } else {
     elements.audio.pause();
+  }
+}
+
+// Возобновление, устойчивое к прерываниям (звонок, другое приложение).
+// Если iOS выгрузил источник, переустанавливаем его и продолжаем с места.
+async function playCurrent() {
+  if (!state.currentBook) return;
+  if (state.currentObjectUrl && (elements.audio.readyState === 0 || elements.audio.error)) {
+    elements.audio.src = state.currentObjectUrl;
+    elements.audio.load();
+  }
+  try {
+    await elements.audio.play();
+    restoreSavedPosition();
+  } catch {
+    showToast("Не удалось возобновить воспроизведение.");
+  }
+}
+
+// Возврат на сохранённую позицию, если плеер сбросился к началу.
+function restoreSavedPosition() {
+  if (!state.currentBook) return;
+  const target = clamp(state.currentBook.currentPosition || 0, 0, safeDuration());
+  if (target > 1 && Math.abs((elements.audio.currentTime || 0) - target) > 1.5) {
+    elements.audio.currentTime = target;
   }
 }
 
@@ -235,6 +313,390 @@ function updateRateButtons() {
   }
 }
 
+async function addBookmark() {
+  if (!state.currentBook) return;
+  const position = clamp(elements.audio.currentTime || state.currentBook.currentPosition || 0, 0, safeDuration());
+  const note = await openBookmarkDialog({
+    title: "Новая закладка",
+    time: `Позиция: ${formatTime(position)}`,
+    value: ""
+  });
+  if (note === null) return;
+  const bookmark = {
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    position,
+    note,
+    createdAt: Date.now()
+  };
+  if (!Array.isArray(state.currentBook.bookmarks)) state.currentBook.bookmarks = [];
+  state.currentBook.bookmarks.push(bookmark);
+  persistCurrentBook();
+  renderBookmarks();
+  showToast(`Закладка на ${formatTime(position)} добавлена.`);
+  window.setTimeout(hideToast, 1500);
+}
+
+async function editBookmark(id) {
+  const bookmark = state.currentBook?.bookmarks?.find(item => item.id === id);
+  if (!bookmark) return;
+  const note = await openBookmarkDialog({
+    title: "Изменить комментарий",
+    time: `Позиция: ${formatTime(bookmark.position)}`,
+    value: bookmark.note || ""
+  });
+  if (note === null) return;
+  bookmark.note = note;
+  persistCurrentBook();
+  renderBookmarks();
+}
+
+// Промис-обёртка над модальным окном с многострочным полем.
+// Возвращает текст (с обрезкой пробелов) или null, если пользователь отменил.
+function openBookmarkDialog({ title, time, value }) {
+  return new Promise(resolve => {
+    const dialog = elements.bookmarkDialog;
+    if (!dialog || typeof dialog.showModal !== "function") {
+      const fallback = prompt(title, value || "");
+      resolve(fallback === null ? null : fallback.trim());
+      return;
+    }
+
+    elements.bookmarkDialogTitle.textContent = title;
+    elements.bookmarkDialogTime.textContent = time || "";
+    elements.bookmarkDialogTime.classList.toggle("hidden", !time);
+    elements.bookmarkNoteInput.value = value || "";
+
+    const finish = result => {
+      elements.bookmarkSave.removeEventListener("click", onSave);
+      elements.bookmarkCancel.removeEventListener("click", onCancel);
+      dialog.removeEventListener("cancel", onCancel);
+      if (dialog.open) dialog.close();
+      resolve(result);
+    };
+    const onSave = () => finish(elements.bookmarkNoteInput.value.trim());
+    const onCancel = event => {
+      event?.preventDefault?.();
+      finish(null);
+    };
+
+    elements.bookmarkSave.addEventListener("click", onSave);
+    elements.bookmarkCancel.addEventListener("click", onCancel);
+    dialog.addEventListener("cancel", onCancel);
+
+    dialog.showModal();
+    elements.bookmarkNoteInput.focus();
+  });
+}
+
+function deleteBookmark(id) {
+  if (!state.currentBook) return;
+  state.currentBook.bookmarks = (state.currentBook.bookmarks || []).filter(item => item.id !== id);
+  persistCurrentBook();
+  renderBookmarks();
+}
+
+function jumpToBookmark(id) {
+  const bookmark = state.currentBook?.bookmarks?.find(item => item.id === id);
+  if (!bookmark) return;
+  elements.audio.currentTime = clamp(bookmark.position, 0, safeDuration());
+  updatePlaybackUi();
+  persistCurrentBook();
+}
+
+function renderBookmarks() {
+  if (!elements.bookmarkList) return;
+  const bookmarks = [...(state.currentBook?.bookmarks || [])].sort((a, b) => a.position - b.position);
+  elements.bookmarkList.innerHTML = "";
+
+  if (bookmarks.length === 0) {
+    elements.bookmarkList.innerHTML = `<p class="bookmark-empty">Пока нет закладок.</p>`;
+    return;
+  }
+
+  for (const bookmark of bookmarks) {
+    const item = document.createElement("div");
+    item.className = "bookmark-item";
+    item.innerHTML = `
+      <button type="button" class="bookmark-jump">
+        <span class="bookmark-time">${formatTime(bookmark.position)}</span>
+        <span class="bookmark-note">${bookmark.note ? escapeHtml(bookmark.note) : "Без комментария"}</span>
+      </button>
+      <button type="button" class="bookmark-action" aria-label="Изменить комментарий">✎</button>
+      <button type="button" class="bookmark-action" aria-label="Удалить закладку">✕</button>
+    `;
+    const actions = item.querySelectorAll(".bookmark-action");
+    item.querySelector(".bookmark-jump").addEventListener("click", () => jumpToBookmark(bookmark.id));
+    actions[0].addEventListener("click", () => editBookmark(bookmark.id));
+    actions[1].addEventListener("click", () => deleteBookmark(bookmark.id));
+    elements.bookmarkList.append(item);
+  }
+}
+
+// Учёт сеансов прослушивания. Каждый вызов во время воспроизведения продлевает
+// текущий сеанс; перерыв дольше SESSION_GAP_MS начинает новый сеанс. Данные
+// хранятся прямо в записи книги, поэтому переживают перезапуск приложения.
+function markListening() {
+  if (!state.currentBook) return;
+  const now = Date.now();
+  const position = clamp(elements.audio.currentTime || 0, 0, safeDuration() || state.currentBook.duration || 0);
+  let session = state.session;
+
+  if (!session || now - session.endedAt > SESSION_GAP_MS) {
+    session = {
+      id: crypto.randomUUID ? crypto.randomUUID() : String(now),
+      startedAt: now,
+      endedAt: now,
+      listenedSeconds: 0,
+      fromPosition: position,
+      toPosition: position
+    };
+    if (!Array.isArray(state.currentBook.sessions)) state.currentBook.sessions = [];
+    state.currentBook.sessions.push(session);
+    state.session = session;
+    if (!state.currentBook.firstStartedAt) state.currentBook.firstStartedAt = now;
+    if (state.currentBook.sessions.length > MAX_SESSIONS) {
+      state.currentBook.sessions.splice(0, state.currentBook.sessions.length - MAX_SESSIONS);
+    }
+  } else {
+    session.listenedSeconds += Math.max(0, Math.round((now - session.endedAt) / 1000));
+    session.endedAt = now;
+    session.toPosition = position;
+  }
+  state.currentBook.lastFinishedAt = session.endedAt;
+}
+
+function buildReport(book) {
+  const sessions = [...(book.sessions || [])].sort((a, b) => a.startedAt - b.startedAt);
+  const totalListened = sessions.reduce((sum, item) => sum + (item.listenedSeconds || 0), 0);
+  return {
+    title: book.title,
+    firstStartedAt: book.firstStartedAt || sessions[0]?.startedAt || null,
+    lastFinishedAt: book.lastFinishedAt || sessions[sessions.length - 1]?.endedAt || null,
+    progress: progressPercent(book),
+    position: book.currentPosition || 0,
+    duration: book.duration || 0,
+    totalListened,
+    sessionCount: sessions.length,
+    sessions
+  };
+}
+
+function openReport() {
+  if (!state.currentBook) return;
+  if (!elements.audio.paused) markListening();
+  const report = buildReport(state.currentBook);
+  elements.reportBody.innerHTML = renderReportHtml(report);
+  const dialog = elements.reportDialog;
+  elements.reportSave.onclick = () => saveReportImage(state.currentBook);
+  elements.reportExport.onclick = () => exportReportText(state.currentBook);
+  elements.reportClose.onclick = () => { if (dialog.open) dialog.close(); };
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute("open", "");
+  }
+}
+
+function renderReportHtml(report) {
+  const shown = [...report.sessions].reverse().slice(0, 40);
+  const rows = shown.map(item => `
+    <li class="report-session">
+      <div class="report-session-main">
+        <span class="report-session-time">${escapeHtml(formatDateTimeFull(item.startedAt))} – ${escapeHtml(formatClock(item.endedAt))}</span>
+        <span class="report-session-pos">${formatTime(item.fromPosition)} → ${formatTime(item.toPosition)}</span>
+      </div>
+      <span class="report-session-dur">${escapeHtml(formatDurationHuman(item.listenedSeconds))}</span>
+    </li>`).join("");
+
+  return `
+    <div class="report-title">${escapeHtml(report.title)}</div>
+    <dl class="report-stats">
+      <div><dt>Начато</dt><dd>${report.firstStartedAt ? escapeHtml(formatDateTimeFull(report.firstStartedAt)) : "—"}</dd></div>
+      <div><dt>Последнее прослушивание</dt><dd>${report.lastFinishedAt ? escapeHtml(formatDateTimeFull(report.lastFinishedAt)) : "—"}</dd></div>
+      <div><dt>Всего прослушано</dt><dd>${escapeHtml(formatDurationHuman(report.totalListened))}</dd></div>
+      <div><dt>Прогресс</dt><dd>${report.progress}% · ${formatTime(report.position)} / ${formatTime(report.duration)}</dd></div>
+      <div><dt>Сеансов</dt><dd>${report.sessionCount}</dd></div>
+    </dl>
+    <p class="report-sub">История сеансов</p>
+    <ul class="report-list">${rows || '<li class="report-empty">Сеансов пока нет.</li>'}</ul>
+  `;
+}
+
+async function saveReportImage(book) {
+  try {
+    const canvas = drawReportCanvas(buildReport(book));
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("no blob");
+    await shareOrDownload(new File([blob], `Отчёт — ${book.title}.png`, { type: "image/png" }));
+  } catch {
+    showToast("Не удалось сохранить картинку отчёта.");
+  }
+}
+
+async function exportReportText(book) {
+  try {
+    const text = buildReportText(buildReport(book));
+    const file = new File([text], `Отчёт — ${book.title}.txt`, { type: "text/plain" });
+    await shareOrDownload(file);
+  } catch {
+    showToast("Не удалось экспортировать отчёт.");
+  }
+}
+
+function buildReportText(report) {
+  const lines = [
+    "Отчёт о прослушивании",
+    "",
+    `Книга: ${report.title}`,
+    `Начато: ${report.firstStartedAt ? formatDateTimeFull(report.firstStartedAt) : "—"}`,
+    `Последнее прослушивание: ${report.lastFinishedAt ? formatDateTimeFull(report.lastFinishedAt) : "—"}`,
+    `Всего прослушано: ${formatDurationHuman(report.totalListened)}`,
+    `Прогресс: ${report.progress}% (${formatTime(report.position)} / ${formatTime(report.duration)})`,
+    `Сеансов: ${report.sessionCount}`,
+    "",
+    "История сеансов:"
+  ];
+  if (report.sessions.length === 0) {
+    lines.push("  Сеансов пока нет.");
+  } else {
+    report.sessions.forEach((item, index) => {
+      lines.push(
+        `  ${index + 1}. ${formatDateTimeFull(item.startedAt)} – ${formatClock(item.endedAt)} · ` +
+        `${formatDurationHuman(item.listenedSeconds)} · ${formatTime(item.fromPosition)} → ${formatTime(item.toPosition)}`
+      );
+    });
+  }
+  return lines.join("\n");
+}
+
+// Поделиться файлом (iPhone) или скачать (десктоп/запасной вариант).
+async function shareOrDownload(file) {
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: "Отчёт о прослушивании" });
+      return;
+    } catch {
+      // пользователь отменил share — переходим к скачиванию
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function drawReportCanvas(report) {
+  const ratio = Math.min(window.devicePixelRatio || 1, 3);
+  const W = 760;
+  const pad = 48;
+  const maxText = W - pad * 2;
+  const font = name => `${name}px system-ui, -apple-system, "Segoe UI", sans-serif`;
+
+  const measure = document.createElement("canvas").getContext("2d");
+  measure.font = `700 ${font(40)}`;
+  const titleLines = wrapText(measure, report.title, maxText);
+  const shown = [...report.sessions].reverse().slice(0, 14);
+
+  const statRows = [
+    ["Начато", report.firstStartedAt ? formatDateTimeFull(report.firstStartedAt) : "—"],
+    ["Последнее прослушивание", report.lastFinishedAt ? formatDateTimeFull(report.lastFinishedAt) : "—"],
+    ["Всего прослушано", formatDurationHuman(report.totalListened)],
+    ["Прогресс", `${report.progress}% · ${formatTime(report.position)} / ${formatTime(report.duration)}`],
+    ["Сеансов", String(report.sessionCount)]
+  ];
+
+  let H = pad + 30 + titleLines.length * 50 + 16 + statRows.length * 40 + 16 + 36 + Math.max(shown.length, 1) * 58 + pad;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W * ratio;
+  canvas.height = H * ratio;
+  const ctx = canvas.getContext("2d");
+  ctx.scale(ratio, ratio);
+  ctx.textBaseline = "top";
+
+  ctx.fillStyle = "#0f1413";
+  ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = "#7fd6c7";
+  ctx.fillRect(0, 0, W, 8);
+
+  let y = pad;
+  ctx.fillStyle = "#7fd6c7";
+  ctx.font = `700 ${font(16)}`;
+  ctx.fillText("ОТЧЁТ О ПРОСЛУШИВАНИИ", pad, y);
+  y += 30;
+
+  ctx.fillStyle = "#f4f1ea";
+  ctx.font = `700 ${font(40)}`;
+  for (const line of titleLines) {
+    ctx.fillText(line, pad, y);
+    y += 50;
+  }
+  y += 16;
+
+  ctx.font = `400 ${font(20)}`;
+  for (const [label, value] of statRows) {
+    ctx.fillStyle = "#a9a398";
+    ctx.textAlign = "left";
+    ctx.fillText(label, pad, y);
+    ctx.fillStyle = "#f4f1ea";
+    ctx.textAlign = "right";
+    ctx.fillText(value, W - pad, y);
+    y += 40;
+  }
+  ctx.textAlign = "left";
+  y += 16;
+
+  ctx.fillStyle = "#7fd6c7";
+  ctx.font = `700 ${font(22)}`;
+  ctx.fillText("История сеансов", pad, y);
+  y += 36;
+
+  if (shown.length === 0) {
+    ctx.fillStyle = "#a9a398";
+    ctx.font = `400 ${font(18)}`;
+    ctx.fillText("Сеансов пока нет.", pad, y);
+  } else {
+    for (const item of shown) {
+      ctx.fillStyle = "#f4f1ea";
+      ctx.font = `400 ${font(18)}`;
+      ctx.textAlign = "left";
+      ctx.fillText(`${formatDateTimeFull(item.startedAt)} – ${formatClock(item.endedAt)}`, pad, y);
+      ctx.fillStyle = "#a9a398";
+      ctx.textAlign = "right";
+      ctx.fillText(formatDurationHuman(item.listenedSeconds), W - pad, y);
+      y += 28;
+      ctx.fillStyle = "#6f6a60";
+      ctx.font = `400 ${font(15)}`;
+      ctx.textAlign = "left";
+      ctx.fillText(`${formatTime(item.fromPosition)} → ${formatTime(item.toPosition)}`, pad, y);
+      y += 30;
+    }
+  }
+
+  return canvas;
+}
+
+function wrapText(ctx, text, maxWidth) {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (ctx.measureText(candidate).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return (lines.length ? lines : [String(text)]).slice(0, 3);
+}
+
 async function persistCurrentBook() {
   if (!state.currentBook) return;
   const duration = state.currentBook.duration || safeDuration();
@@ -249,7 +711,10 @@ async function persistCurrentBook() {
 
 function startAutosave() {
   stopAutosave();
-  state.saveTimer = window.setInterval(persistCurrentBook, 5000);
+  state.saveTimer = window.setInterval(() => {
+    markListening();
+    persistCurrentBook();
+  }, 5000);
 }
 
 function stopAutosave() {
@@ -301,6 +766,7 @@ function renderBookCard(book) {
         <span>${statusText(book)}</span>
         <span>${formatTime(book.duration)}</span>
         <span>${formatFileSize(book.fileSize)}</span>
+        ${bookmarkCount(book) > 0 ? `<span class="book-bookmarks">🔖 ${bookmarkCount(book)}</span>` : ""}
       </div>
       <div class="progress-track"><div class="progress-fill" style="width: ${progressPercent(book)}%"></div></div>
       <div class="book-bottom">
@@ -336,7 +802,7 @@ async function deleteBook(id) {
 function configureMediaSession() {
   if (!("mediaSession" in navigator)) return;
 
-  navigator.mediaSession.setActionHandler("play", () => elements.audio.play());
+  navigator.mediaSession.setActionHandler("play", () => playCurrent());
   navigator.mediaSession.setActionHandler("pause", () => elements.audio.pause());
   navigator.mediaSession.setActionHandler("seekbackward", event => skipBy(-(event.seekOffset || 15)));
   navigator.mediaSession.setActionHandler("seekforward", event => skipBy(event.seekOffset || 30));
@@ -471,6 +937,10 @@ function safeDuration() {
   return Number.isFinite(elements.audio.duration) ? elements.audio.duration : (state.currentBook?.duration || 0);
 }
 
+function bookmarkCount(book) {
+  return Array.isArray(book.bookmarks) ? book.bookmarks.length : 0;
+}
+
 function progressPercent(book) {
   if (!book.duration) return 0;
   return Math.min(100, Math.max(0, Math.round((book.currentPosition / book.duration) * 100)));
@@ -514,6 +984,33 @@ function formatRelativeDate(timestamp) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(timestamp));
+}
+
+function formatDateTimeFull(timestamp) {
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(timestamp));
+}
+
+function formatClock(timestamp) {
+  return new Intl.DateTimeFormat("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(timestamp));
+}
+
+function formatDurationHuman(seconds) {
+  const total = Math.max(0, Math.round(seconds || 0));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const rest = total % 60;
+  if (hours > 0) return `${hours} ч ${minutes} мин`;
+  if (minutes > 0) return `${minutes} мин`;
+  return `${rest} сек`;
 }
 
 function stripExtension(name) {

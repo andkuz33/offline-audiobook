@@ -516,11 +516,18 @@ function openReport() {
 
 function renderReportHtml(report) {
   const shown = report.days.slice(0, 40);
-  const rows = shown.map(day => `
-    <li class="report-session">
-      <span class="report-session-time">${escapeHtml(formatDateOnly(day.startedAt))}</span>
-      <span class="report-session-dur">${escapeHtml(formatDurationHuman(day.listenedSeconds))}</span>
-    </li>`).join("");
+  const maxSeconds = Math.max(1, ...shown.map(day => day.listenedSeconds));
+  const rows = shown.map(day => {
+    const pct = Math.max(4, Math.round((day.listenedSeconds / maxSeconds) * 100));
+    return `
+    <li class="report-day">
+      <div class="report-day-head">
+        <span class="report-day-date">${escapeHtml(formatDateOnly(day.startedAt))}</span>
+        <span class="report-day-dur">${escapeHtml(formatDurationHuman(day.listenedSeconds))}</span>
+      </div>
+      <div class="report-day-bar"><span style="width:${pct}%"></span></div>
+    </li>`;
+  }).join("");
 
   return `
     <div class="report-title">${escapeHtml(report.title)}</div>
@@ -620,7 +627,8 @@ function drawReportCanvas(report) {
     ["Дней прослушивания", String(report.days.length)]
   ];
 
-  let H = pad + 30 + titleLines.length * 50 + 16 + statRows.length * 40 + 16 + 36 + Math.max(shown.length, 1) * 40 + pad;
+  const maxDaySeconds = Math.max(1, ...shown.map(day => day.listenedSeconds));
+  let H = pad + 30 + titleLines.length * 50 + 16 + statRows.length * 40 + 16 + 36 + Math.max(shown.length, 1) * 50 + pad;
 
   const canvas = document.createElement("canvas");
   canvas.width = W * ratio;
@@ -671,19 +679,39 @@ function drawReportCanvas(report) {
     ctx.font = `400 ${font(18)}`;
     ctx.fillText("Пока нечего показать.", pad, y);
   } else {
+    const barW = W - pad * 2;
     for (const day of shown) {
       ctx.fillStyle = "#f4f1ea";
       ctx.font = `400 ${font(18)}`;
       ctx.textAlign = "left";
       ctx.fillText(formatDateOnly(day.startedAt), pad, y);
-      ctx.fillStyle = "#a9a398";
+      ctx.fillStyle = "#7fd6c7";
       ctx.textAlign = "right";
       ctx.fillText(formatDurationHuman(day.listenedSeconds), W - pad, y);
-      y += 40;
+      y += 28;
+      const pct = Math.max(0.03, day.listenedSeconds / maxDaySeconds);
+      ctx.fillStyle = "#23302d";
+      roundRect(ctx, pad, y, barW, 8, 4);
+      ctx.fill();
+      ctx.fillStyle = "#7fd6c7";
+      roundRect(ctx, pad, y, Math.max(8, barW * pct), 8, 4);
+      ctx.fill();
+      y += 22;
     }
   }
 
   return canvas;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  const radius = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + radius, y);
+  ctx.arcTo(x + w, y, x + w, y + h, radius);
+  ctx.arcTo(x + w, y + h, x, y + h, radius);
+  ctx.arcTo(x, y + h, x, y, radius);
+  ctx.arcTo(x, y, x + w, y, radius);
+  ctx.closePath();
 }
 
 function wrapText(ctx, text, maxWidth) {
@@ -1011,6 +1039,7 @@ function formatClock(timestamp) {
 
 function formatDateOnly(timestamp) {
   return new Intl.DateTimeFormat("ru-RU", {
+    weekday: "short",
     day: "numeric",
     month: "long",
     year: "numeric"

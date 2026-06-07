@@ -599,6 +599,47 @@ h1 {
   border-radius: 8px;
 }
 
+.report-day {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.report-day-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.report-day-date {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.report-day-dur {
+  color: var(--accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.report-day-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.report-day-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
 .report-session-main {
   display: grid;
   gap: 2px;

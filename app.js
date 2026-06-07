@@ -74,7 +74,20 @@ function bindEvents() {
   });
 
   elements.audio.addEventListener("timeupdate", updatePlaybackUi);
-  elements.audio.addEventListener("loadedmetadata", updatePlaybackUi);
+  elements.audio.addEventListener("loadedmetadata", () => {
+    // Если iOS выгрузил медиа во время звонка, после перезагрузки
+    // возвращаемся на сохранённую позицию, а не в начало файла.
+    restoreSavedPosition();
+    updatePlaybackUi();
+  });
+  // iOS при входящем звонке/другом приложении может очистить буфер аудио.
+  // Запоминаем место заранее, чтобы кнопка на наушниках вернула нас туда.
+  elements.audio.addEventListener("emptied", () => {
+    if (state.currentBook && (elements.audio.currentTime || 0) > 1) {
+      state.currentBook.currentPosition = elements.audio.currentTime;
+    }
+  });
+  elements.audio.addEventListener("stalled", persistCurrentBook);
   elements.audio.addEventListener("play", () => {
     elements.playPauseButton.textContent = "II";
     elements.playPauseButton.setAttribute("aria-label", "Пауза");
@@ -192,13 +205,34 @@ async function showLibrary() {
 async function togglePlayPause() {
   if (!state.currentBook) return;
   if (elements.audio.paused) {
-    try {
-      await elements.audio.play();
-    } catch {
-      showToast("Не удалось начать воспроизведение.");
-    }
+    await playCurrent();
   } else {
     elements.audio.pause();
+  }
+}
+
+// Возобновление, устойчивое к прерываниям (звонок, другое приложение).
+// Если iOS выгрузил источник, переустанавливаем его и продолжаем с места.
+async function playCurrent() {
+  if (!state.currentBook) return;
+  if (state.currentObjectUrl && (elements.audio.readyState === 0 || elements.audio.error)) {
+    elements.audio.src = state.currentObjectUrl;
+    elements.audio.load();
+  }
+  try {
+    await elements.audio.play();
+    restoreSavedPosition();
+  } catch {
+    showToast("Не удалось возобновить воспроизведение.");
+  }
+}
+
+// Возврат на сохранённую позицию, если плеер сбросился к началу.
+function restoreSavedPosition() {
+  if (!state.currentBook) return;
+  const target = clamp(state.currentBook.currentPosition || 0, 0, safeDuration());
+  if (target > 1 && Math.abs((elements.audio.currentTime || 0) - target) > 1.5) {
+    elements.audio.currentTime = target;
   }
 }
 
@@ -336,7 +370,7 @@ async function deleteBook(id) {
 function configureMediaSession() {
   if (!("mediaSession" in navigator)) return;
 
-  navigator.mediaSession.setActionHandler("play", () => elements.audio.play());
+  navigator.mediaSession.setActionHandler("play", () => playCurrent());
   navigator.mediaSession.setActionHandler("pause", () => elements.audio.pause());
   navigator.mediaSession.setActionHandler("seekbackward", event => skipBy(-(event.seekOffset || 15)));
   navigator.mediaSession.setActionHandler("seekforward", event => skipBy(event.seekOffset || 30));

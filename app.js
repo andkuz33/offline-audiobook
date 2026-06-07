@@ -31,6 +31,8 @@ const elements = {
   skipForwardButton: document.querySelector("#skipForwardButton"),
   playPauseButton: document.querySelector("#playPauseButton"),
   speedButtons: document.querySelector("#speedButtons"),
+  addBookmarkButton: document.querySelector("#addBookmarkButton"),
+  bookmarkList: document.querySelector("#bookmarkList"),
   audio: document.querySelector("#audio"),
   toast: document.querySelector("#toast")
 };
@@ -50,6 +52,7 @@ async function init() {
     configureMediaSession();
     registerServiceWorker();
     updateInstallHint();
+    await maybeResumeLastBook();
   } catch (error) {
     showToast(error.message || "Не удалось запустить приложение.");
   }
@@ -60,6 +63,7 @@ function bindEvents() {
   elements.emptyImportButton.addEventListener("click", () => elements.fileInput.click());
   elements.fileInput.addEventListener("change", handleFileSelection);
   elements.backButton.addEventListener("click", showLibrary);
+  elements.addBookmarkButton.addEventListener("click", addBookmark);
   elements.playPauseButton.addEventListener("click", togglePlayPause);
   elements.skipBackButton.addEventListener("click", () => skipBy(-15));
   elements.skipForwardButton.addEventListener("click", () => skipBy(30));
@@ -145,7 +149,8 @@ async function handleFileSelection(event) {
       lastOpenedAt: Date.now(),
       createdAt: Date.now(),
       isFinished: false,
-      fileSize: file.size
+      fileSize: file.size,
+      bookmarks: []
     };
 
     await saveAudioFile(id, file);
@@ -180,6 +185,7 @@ async function openBook(id) {
   elements.progressSlider.max = String(Math.max(book.duration, 1));
   elements.progressSlider.value = String(clamp(book.currentPosition || 0, 0, book.duration));
   updateRateButtons();
+  renderBookmarks();
   showPlayer();
 
   elements.audio.addEventListener("loadedmetadata", function onMetadata() {
@@ -188,6 +194,15 @@ async function openBook(id) {
     updatePlaybackUi();
     updateMediaSessionPlaybackState();
   });
+}
+
+// При запуске открываем последнюю книгу в процессе, чтобы кнопку на наушниках
+// можно было нажать сразу — даже после полной выгрузки приложения из памяти.
+async function maybeResumeLastBook() {
+  const last = [...state.books]
+    .filter(book => (book.currentPosition || 0) > 1 && !book.isFinished)
+    .sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)[0];
+  if (last) await openBook(last.id);
 }
 
 function showPlayer() {
@@ -266,6 +281,78 @@ function updateRateButtons() {
   const activeRate = elements.audio.playbackRate || state.currentBook?.playbackRate || 1;
   for (const button of elements.speedButtons.children) {
     button.classList.toggle("active", button.textContent === `${activeRate}x`);
+  }
+}
+
+function addBookmark() {
+  if (!state.currentBook) return;
+  const position = clamp(elements.audio.currentTime || state.currentBook.currentPosition || 0, 0, safeDuration());
+  const note = (prompt("Комментарий к закладке (необязательно):", "") || "").trim();
+  const bookmark = {
+    id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+    position,
+    note,
+    createdAt: Date.now()
+  };
+  if (!Array.isArray(state.currentBook.bookmarks)) state.currentBook.bookmarks = [];
+  state.currentBook.bookmarks.push(bookmark);
+  persistCurrentBook();
+  renderBookmarks();
+  showToast(`Закладка на ${formatTime(position)} добавлена.`);
+  window.setTimeout(hideToast, 1500);
+}
+
+function editBookmark(id) {
+  const bookmark = state.currentBook?.bookmarks?.find(item => item.id === id);
+  if (!bookmark) return;
+  const note = prompt("Комментарий к закладке:", bookmark.note || "");
+  if (note === null) return;
+  bookmark.note = note.trim();
+  persistCurrentBook();
+  renderBookmarks();
+}
+
+function deleteBookmark(id) {
+  if (!state.currentBook) return;
+  state.currentBook.bookmarks = (state.currentBook.bookmarks || []).filter(item => item.id !== id);
+  persistCurrentBook();
+  renderBookmarks();
+}
+
+function jumpToBookmark(id) {
+  const bookmark = state.currentBook?.bookmarks?.find(item => item.id === id);
+  if (!bookmark) return;
+  elements.audio.currentTime = clamp(bookmark.position, 0, safeDuration());
+  updatePlaybackUi();
+  persistCurrentBook();
+}
+
+function renderBookmarks() {
+  if (!elements.bookmarkList) return;
+  const bookmarks = [...(state.currentBook?.bookmarks || [])].sort((a, b) => a.position - b.position);
+  elements.bookmarkList.innerHTML = "";
+
+  if (bookmarks.length === 0) {
+    elements.bookmarkList.innerHTML = `<p class="bookmark-empty">Пока нет закладок.</p>`;
+    return;
+  }
+
+  for (const bookmark of bookmarks) {
+    const item = document.createElement("div");
+    item.className = "bookmark-item";
+    item.innerHTML = `
+      <button type="button" class="bookmark-jump">
+        <span class="bookmark-time">${formatTime(bookmark.position)}</span>
+        <span class="bookmark-note">${bookmark.note ? escapeHtml(bookmark.note) : "Без комментария"}</span>
+      </button>
+      <button type="button" class="bookmark-action" aria-label="Изменить комментарий">✎</button>
+      <button type="button" class="bookmark-action" aria-label="Удалить закладку">✕</button>
+    `;
+    const actions = item.querySelectorAll(".bookmark-action");
+    item.querySelector(".bookmark-jump").addEventListener("click", () => jumpToBookmark(bookmark.id));
+    actions[0].addEventListener("click", () => editBookmark(bookmark.id));
+    actions[1].addEventListener("click", () => deleteBookmark(bookmark.id));
+    elements.bookmarkList.append(item);
   }
 }
 

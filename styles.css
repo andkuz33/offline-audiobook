@@ -372,6 +372,84 @@ h1 {
   color: var(--accent-contrast);
 }
 
+.bookmark-block {
+  display: grid;
+  gap: 10px;
+}
+
+.bookmark-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.bookmark-head p {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.bookmark-head .ghost-button {
+  min-height: 40px;
+  padding: 0 14px;
+}
+
+.bookmark-list {
+  display: grid;
+  gap: 8px;
+}
+
+.bookmark-empty {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.bookmark-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.bookmark-jump {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.bookmark-time {
+  color: var(--accent);
+  font-weight: 780;
+  font-variant-numeric: tabular-nums;
+}
+
+.bookmark-note {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.92rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bookmark-action {
+  width: 38px;
+  height: 38px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  font-size: 1rem;
+}
+
 .toast {
   position: fixed;
   left: 50%;

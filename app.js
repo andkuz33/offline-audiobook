@@ -484,6 +484,7 @@ function buildReport(book) {
     duration: book.duration || 0,
     totalListened,
     sessionCount: sessions.length,
+    days: groupSessionsByDay(sessions),
     sessions
   };
 }
@@ -514,14 +515,11 @@ function openReport() {
 }
 
 function renderReportHtml(report) {
-  const shown = [...report.sessions].reverse().slice(0, 40);
-  const rows = shown.map(item => `
+  const shown = report.days.slice(0, 40);
+  const rows = shown.map(day => `
     <li class="report-session">
-      <div class="report-session-main">
-        <span class="report-session-time">${escapeHtml(formatDateTimeFull(item.startedAt))} – ${escapeHtml(formatClock(item.endedAt))}</span>
-        <span class="report-session-pos">${formatTime(item.fromPosition)} → ${formatTime(item.toPosition)}</span>
-      </div>
-      <span class="report-session-dur">${escapeHtml(formatDurationHuman(item.listenedSeconds))}</span>
+      <span class="report-session-time">${escapeHtml(formatDateOnly(day.startedAt))}</span>
+      <span class="report-session-dur">${escapeHtml(formatDurationHuman(day.listenedSeconds))}</span>
     </li>`).join("");
 
   return `
@@ -531,10 +529,10 @@ function renderReportHtml(report) {
       <div><dt>Последнее прослушивание</dt><dd>${report.lastFinishedAt ? escapeHtml(formatDateTimeFull(report.lastFinishedAt)) : "—"}</dd></div>
       <div><dt>Всего прослушано</dt><dd>${escapeHtml(formatDurationHuman(report.totalListened))}</dd></div>
       <div><dt>Прогресс</dt><dd>${report.progress}% · ${formatTime(report.position)} / ${formatTime(report.duration)}</dd></div>
-      <div><dt>Сеансов</dt><dd>${report.sessionCount}</dd></div>
+      <div><dt>Дней прослушивания</dt><dd>${report.days.length}</dd></div>
     </dl>
-    <p class="report-sub">История сеансов</p>
-    <ul class="report-list">${rows || '<li class="report-empty">Сеансов пока нет.</li>'}</ul>
+    <p class="report-sub">По дням</p>
+    <ul class="report-list">${rows || '<li class="report-empty">Пока нечего показать.</li>'}</ul>
   `;
 }
 
@@ -568,18 +566,15 @@ function buildReportText(report) {
     `Последнее прослушивание: ${report.lastFinishedAt ? formatDateTimeFull(report.lastFinishedAt) : "—"}`,
     `Всего прослушано: ${formatDurationHuman(report.totalListened)}`,
     `Прогресс: ${report.progress}% (${formatTime(report.position)} / ${formatTime(report.duration)})`,
-    `Сеансов: ${report.sessionCount}`,
+    `Дней прослушивания: ${report.days.length}`,
     "",
-    "История сеансов:"
+    "По дням:"
   ];
-  if (report.sessions.length === 0) {
-    lines.push("  Сеансов пока нет.");
+  if (report.days.length === 0) {
+    lines.push("  Пока нечего показать.");
   } else {
-    report.sessions.forEach((item, index) => {
-      lines.push(
-        `  ${index + 1}. ${formatDateTimeFull(item.startedAt)} – ${formatClock(item.endedAt)} · ` +
-        `${formatDurationHuman(item.listenedSeconds)} · ${formatTime(item.fromPosition)} → ${formatTime(item.toPosition)}`
-      );
+    report.days.forEach(day => {
+      lines.push(`  ${formatDateOnly(day.startedAt)} · ${formatDurationHuman(day.listenedSeconds)}`);
     });
   }
   return lines.join("\n");
@@ -615,17 +610,17 @@ function drawReportCanvas(report) {
   const measure = document.createElement("canvas").getContext("2d");
   measure.font = `700 ${font(40)}`;
   const titleLines = wrapText(measure, report.title, maxText);
-  const shown = [...report.sessions].reverse().slice(0, 14);
+  const shown = report.days.slice(0, 14);
 
   const statRows = [
     ["Начато", report.firstStartedAt ? formatDateTimeFull(report.firstStartedAt) : "—"],
     ["Последнее прослушивание", report.lastFinishedAt ? formatDateTimeFull(report.lastFinishedAt) : "—"],
     ["Всего прослушано", formatDurationHuman(report.totalListened)],
     ["Прогресс", `${report.progress}% · ${formatTime(report.position)} / ${formatTime(report.duration)}`],
-    ["Сеансов", String(report.sessionCount)]
+    ["Дней прослушивания", String(report.days.length)]
   ];
 
-  let H = pad + 30 + titleLines.length * 50 + 16 + statRows.length * 40 + 16 + 36 + Math.max(shown.length, 1) * 58 + pad;
+  let H = pad + 30 + titleLines.length * 50 + 16 + statRows.length * 40 + 16 + 36 + Math.max(shown.length, 1) * 40 + pad;
 
   const canvas = document.createElement("canvas");
   canvas.width = W * ratio;
@@ -668,28 +663,23 @@ function drawReportCanvas(report) {
 
   ctx.fillStyle = "#7fd6c7";
   ctx.font = `700 ${font(22)}`;
-  ctx.fillText("История сеансов", pad, y);
+  ctx.fillText("По дням", pad, y);
   y += 36;
 
   if (shown.length === 0) {
     ctx.fillStyle = "#a9a398";
     ctx.font = `400 ${font(18)}`;
-    ctx.fillText("Сеансов пока нет.", pad, y);
+    ctx.fillText("Пока нечего показать.", pad, y);
   } else {
-    for (const item of shown) {
+    for (const day of shown) {
       ctx.fillStyle = "#f4f1ea";
       ctx.font = `400 ${font(18)}`;
       ctx.textAlign = "left";
-      ctx.fillText(`${formatDateTimeFull(item.startedAt)} – ${formatClock(item.endedAt)}`, pad, y);
+      ctx.fillText(formatDateOnly(day.startedAt), pad, y);
       ctx.fillStyle = "#a9a398";
       ctx.textAlign = "right";
-      ctx.fillText(formatDurationHuman(item.listenedSeconds), W - pad, y);
-      y += 28;
-      ctx.fillStyle = "#6f6a60";
-      ctx.font = `400 ${font(15)}`;
-      ctx.textAlign = "left";
-      ctx.fillText(`${formatTime(item.fromPosition)} → ${formatTime(item.toPosition)}`, pad, y);
-      y += 30;
+      ctx.fillText(formatDurationHuman(day.listenedSeconds), W - pad, y);
+      y += 40;
     }
   }
 
@@ -1017,6 +1007,31 @@ function formatClock(timestamp) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(timestamp));
+}
+
+function formatDateOnly(timestamp) {
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  }).format(new Date(timestamp));
+}
+
+// Группирует сеансы по календарным дням: сколько всего прослушано за день.
+function groupSessionsByDay(sessions) {
+  const byDay = new Map();
+  for (const item of sessions) {
+    const date = new Date(item.startedAt);
+    const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+    let day = byDay.get(key);
+    if (!day) {
+      day = { key, startedAt: item.startedAt, listenedSeconds: 0 };
+      byDay.set(key, day);
+    }
+    day.listenedSeconds += item.listenedSeconds || 0;
+    if (item.startedAt < day.startedAt) day.startedAt = item.startedAt;
+  }
+  return [...byDay.values()].sort((a, b) => b.startedAt - a.startedAt);
 }
 
 function formatDurationHuman(seconds) {

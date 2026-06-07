@@ -1,4 +1,4 @@
-const CACHE_NAME = "offline-audiobook-shell-v7";
+const CACHE_NAME = "offline-audiobook-shell-v8";
 const APP_SHELL = [
   "./",
   "./index.html",

@@ -507,6 +507,38 @@ h1 {
   width: min(560px, calc(100% - 32px));
 }
 
+.app-footer {
+  margin-top: 28px;
+  text-align: center;
+}
+
+.link-button {
+  min-height: 44px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--muted);
+  text-decoration: underline;
+  font-weight: 650;
+}
+
+.about-card p {
+  line-height: 1.5;
+}
+
+.about-version {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.about-warn {
+  color: var(--muted);
+}
+
+.about-card a {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .report-body {
   max-height: 60vh;
   overflow-y: auto;

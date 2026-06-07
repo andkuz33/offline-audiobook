@@ -41,6 +41,10 @@
       </section>
 
       <section id="bookList" class="book-list" aria-label="Список аудиокниг"></section>
+
+      <footer class="app-footer">
+        <button id="aboutButton" type="button" class="link-button">О программе</button>
+      </footer>
     </section>
 
     <section id="playerView" class="view player hidden">
@@ -106,6 +110,21 @@
         <button type="button" id="reportClose" class="ghost-button">Закрыть</button>
         <button type="button" id="reportExport" class="ghost-button">Экспорт в текст</button>
         <button type="button" id="reportSave" class="primary-button">Сохранить картинку</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="aboutDialog" class="modal">
+    <div class="modal-card about-card">
+      <h3>О программе</h3>
+      <p class="about-version">Offline AudioBook · версия 1.0</p>
+      <p>Офлайн-плеер MP3-аудиокниг. Все данные хранятся только на вашем устройстве — ничего не отправляется на сервер, нет рекламы и отслеживания.</p>
+      <p class="about-warn"><strong>Это не резервное хранилище.</strong> iOS может удалить данные сайта при нехватке памяти — храните оригиналы MP3-файлов у себя.</p>
+      <p class="about-warn">Загружайте только файлы, которыми владеете на законных основаниях. Автор не несёт ответственности за добавляемый пользователями контент и за возможную потерю данных. Программа предоставляется «как есть», без гарантий.</p>
+      <p>Сделал Андрей Кузнецов</p>
+      <p>Обратная связь: <a href="https://t.me/AndreyKuznetsov1" target="_blank" rel="noopener">Telegram @AndreyKuznetsov1</a></p>
+      <div class="modal-actions">
+        <button type="button" id="aboutClose" class="primary-button">Закрыть</button>
       </div>
     </div>
   </dialog>

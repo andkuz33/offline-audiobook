@@ -48,6 +48,9 @@ const elements = {
   reportSave: document.querySelector("#reportSave"),
   reportExport: document.querySelector("#reportExport"),
   reportClose: document.querySelector("#reportClose"),
+  aboutButton: document.querySelector("#aboutButton"),
+  aboutDialog: document.querySelector("#aboutDialog"),
+  aboutClose: document.querySelector("#aboutClose"),
   audio: document.querySelector("#audio"),
   toast: document.querySelector("#toast")
 };
@@ -86,6 +89,10 @@ function bindEvents() {
   elements.backButton.addEventListener("click", showLibrary);
   elements.reportButton.addEventListener("click", openReport);
   elements.addBookmarkButton.addEventListener("click", addBookmark);
+  elements.aboutButton.addEventListener("click", openAbout);
+  elements.aboutClose.addEventListener("click", () => {
+    if (elements.aboutDialog.open) elements.aboutDialog.close();
+  });
   elements.playPauseButton.addEventListener("click", togglePlayPause);
   elements.skipBackButton.addEventListener("click", () => skipBy(-15));
   elements.skipForwardButton.addEventListener("click", () => skipBy(30));
@@ -479,6 +486,15 @@ function buildReport(book) {
     sessionCount: sessions.length,
     sessions
   };
+}
+
+function openAbout() {
+  const dialog = elements.aboutDialog;
+  if (typeof dialog.showModal === "function") {
+    dialog.showModal();
+  } else {
+    dialog.setAttribute("open", "");
+  }
 }
 
 function openReport() {

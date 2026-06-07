@@ -33,6 +33,12 @@ const elements = {
   speedButtons: document.querySelector("#speedButtons"),
   addBookmarkButton: document.querySelector("#addBookmarkButton"),
   bookmarkList: document.querySelector("#bookmarkList"),
+  bookmarkDialog: document.querySelector("#bookmarkDialog"),
+  bookmarkDialogTitle: document.querySelector("#bookmarkDialogTitle"),
+  bookmarkDialogTime: document.querySelector("#bookmarkDialogTime"),
+  bookmarkNoteInput: document.querySelector("#bookmarkNoteInput"),
+  bookmarkSave: document.querySelector("#bookmarkSave"),
+  bookmarkCancel: document.querySelector("#bookmarkCancel"),
   audio: document.querySelector("#audio"),
   toast: document.querySelector("#toast")
 };
@@ -284,10 +290,15 @@ function updateRateButtons() {
   }
 }
 
-function addBookmark() {
+async function addBookmark() {
   if (!state.currentBook) return;
   const position = clamp(elements.audio.currentTime || state.currentBook.currentPosition || 0, 0, safeDuration());
-  const note = (prompt("Комментарий к закладке (необязательно):", "") || "").trim();
+  const note = await openBookmarkDialog({
+    title: "Новая закладка",
+    time: `Позиция: ${formatTime(position)}`,
+    value: ""
+  });
+  if (note === null) return;
   const bookmark = {
     id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
     position,
@@ -302,14 +313,56 @@ function addBookmark() {
   window.setTimeout(hideToast, 1500);
 }
 
-function editBookmark(id) {
+async function editBookmark(id) {
   const bookmark = state.currentBook?.bookmarks?.find(item => item.id === id);
   if (!bookmark) return;
-  const note = prompt("Комментарий к закладке:", bookmark.note || "");
+  const note = await openBookmarkDialog({
+    title: "Изменить комментарий",
+    time: `Позиция: ${formatTime(bookmark.position)}`,
+    value: bookmark.note || ""
+  });
   if (note === null) return;
-  bookmark.note = note.trim();
+  bookmark.note = note;
   persistCurrentBook();
   renderBookmarks();
+}
+
+// Промис-обёртка над модальным окном с многострочным полем.
+// Возвращает текст (с обрезкой пробелов) или null, если пользователь отменил.
+function openBookmarkDialog({ title, time, value }) {
+  return new Promise(resolve => {
+    const dialog = elements.bookmarkDialog;
+    if (!dialog || typeof dialog.showModal !== "function") {
+      const fallback = prompt(title, value || "");
+      resolve(fallback === null ? null : fallback.trim());
+      return;
+    }
+
+    elements.bookmarkDialogTitle.textContent = title;
+    elements.bookmarkDialogTime.textContent = time || "";
+    elements.bookmarkDialogTime.classList.toggle("hidden", !time);
+    elements.bookmarkNoteInput.value = value || "";
+
+    const finish = result => {
+      elements.bookmarkSave.removeEventListener("click", onSave);
+      elements.bookmarkCancel.removeEventListener("click", onCancel);
+      dialog.removeEventListener("cancel", onCancel);
+      if (dialog.open) dialog.close();
+      resolve(result);
+    };
+    const onSave = () => finish(elements.bookmarkNoteInput.value.trim());
+    const onCancel = event => {
+      event?.preventDefault?.();
+      finish(null);
+    };
+
+    elements.bookmarkSave.addEventListener("click", onSave);
+    elements.bookmarkCancel.addEventListener("click", onCancel);
+    dialog.addEventListener("cancel", onCancel);
+
+    dialog.showModal();
+    elements.bookmarkNoteInput.focus();
+  });
 }
 
 function deleteBookmark(id) {
@@ -422,6 +475,7 @@ function renderBookCard(book) {
         <span>${statusText(book)}</span>
         <span>${formatTime(book.duration)}</span>
         <span>${formatFileSize(book.fileSize)}</span>
+        ${bookmarkCount(book) > 0 ? `<span class="book-bookmarks">🔖 ${bookmarkCount(book)}</span>` : ""}
       </div>
       <div class="progress-track"><div class="progress-fill" style="width: ${progressPercent(book)}%"></div></div>
       <div class="book-bottom">
@@ -590,6 +644,10 @@ function revokeCurrentObjectUrl() {
 
 function safeDuration() {
   return Number.isFinite(elements.audio.duration) ? elements.audio.duration : (state.currentBook?.duration || 0);
+}
+
+function bookmarkCount(book) {
+  return Array.isArray(book.bookmarks) ? book.bookmarks.length : 0;
 }
 
 function progressPercent(book) {

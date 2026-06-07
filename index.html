@@ -84,6 +84,19 @@
   </main>
 
   <div id="toast" class="toast hidden" role="status"></div>
+
+  <dialog id="bookmarkDialog" class="modal">
+    <div class="modal-card">
+      <h3 id="bookmarkDialogTitle">Комментарий к закладке</h3>
+      <p id="bookmarkDialogTime" class="modal-time"></p>
+      <textarea id="bookmarkNoteInput" class="modal-textarea" rows="4" placeholder="Введите комментарий (необязательно)"></textarea>
+      <div class="modal-actions">
+        <button type="button" id="bookmarkCancel" class="ghost-button">Отмена</button>
+        <button type="button" id="bookmarkSave" class="primary-button">Сохранить</button>
+      </div>
+    </div>
+  </dialog>
+
   <audio id="audio" preload="metadata" playsinline></audio>
   <script src="app.js"></script>
 </body>

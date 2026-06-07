@@ -450,6 +450,59 @@ h1 {
   font-size: 1rem;
 }
 
+.book-bookmarks {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.modal {
+  width: min(440px, calc(100% - 32px));
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-strong);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.modal::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.modal-card {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+}
+
+.modal-card h3 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.modal-time {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.modal-textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  resize: vertical;
+  line-height: 1.45;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .toast {
   position: fixed;
   left: 50%;

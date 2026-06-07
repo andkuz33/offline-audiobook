@@ -46,6 +46,7 @@ const elements = {
   reportDialog: document.querySelector("#reportDialog"),
   reportBody: document.querySelector("#reportBody"),
   reportSave: document.querySelector("#reportSave"),
+  reportExport: document.querySelector("#reportExport"),
   reportClose: document.querySelector("#reportClose"),
   audio: document.querySelector("#audio"),
   toast: document.querySelector("#toast")
@@ -487,6 +488,7 @@ function openReport() {
   elements.reportBody.innerHTML = renderReportHtml(report);
   const dialog = elements.reportDialog;
   elements.reportSave.onclick = () => saveReportImage(state.currentBook);
+  elements.reportExport.onclick = () => exportReportText(state.currentBook);
   elements.reportClose.onclick = () => { if (dialog.open) dialog.close(); };
   if (typeof dialog.showModal === "function") {
     dialog.showModal();
@@ -525,28 +527,66 @@ async function saveReportImage(book) {
     const canvas = drawReportCanvas(buildReport(book));
     const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
     if (!blob) throw new Error("no blob");
-    const file = new File([blob], `Отчёт — ${book.title}.png`, { type: "image/png" });
-
-    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      try {
-        await navigator.share({ files: [file], title: "Отчёт о прослушивании" });
-        return;
-      } catch {
-        // пользователь отменил share — пробуем скачать
-      }
-    }
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = file.name;
-    document.body.append(link);
-    link.click();
-    link.remove();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    await shareOrDownload(new File([blob], `Отчёт — ${book.title}.png`, { type: "image/png" }));
   } catch {
     showToast("Не удалось сохранить картинку отчёта.");
   }
+}
+
+async function exportReportText(book) {
+  try {
+    const text = buildReportText(buildReport(book));
+    const file = new File([text], `Отчёт — ${book.title}.txt`, { type: "text/plain" });
+    await shareOrDownload(file);
+  } catch {
+    showToast("Не удалось экспортировать отчёт.");
+  }
+}
+
+function buildReportText(report) {
+  const lines = [
+    "Отчёт о прослушивании",
+    "",
+    `Книга: ${report.title}`,
+    `Начато: ${report.firstStartedAt ? formatDateTimeFull(report.firstStartedAt) : "—"}`,
+    `Последнее прослушивание: ${report.lastFinishedAt ? formatDateTimeFull(report.lastFinishedAt) : "—"}`,
+    `Всего прослушано: ${formatDurationHuman(report.totalListened)}`,
+    `Прогресс: ${report.progress}% (${formatTime(report.position)} / ${formatTime(report.duration)})`,
+    `Сеансов: ${report.sessionCount}`,
+    "",
+    "История сеансов:"
+  ];
+  if (report.sessions.length === 0) {
+    lines.push("  Сеансов пока нет.");
+  } else {
+    report.sessions.forEach((item, index) => {
+      lines.push(
+        `  ${index + 1}. ${formatDateTimeFull(item.startedAt)} – ${formatClock(item.endedAt)} · ` +
+        `${formatDurationHuman(item.listenedSeconds)} · ${formatTime(item.fromPosition)} → ${formatTime(item.toPosition)}`
+      );
+    });
+  }
+  return lines.join("\n");
+}
+
+// Поделиться файлом (iPhone) или скачать (десктоп/запасной вариант).
+async function shareOrDownload(file) {
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file], title: "Отчёт о прослушивании" });
+      return;
+    } catch {
+      // пользователь отменил share — переходим к скачиванию
+    }
+  }
+  const url = URL.createObjectURL(file);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = file.name;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 function drawReportCanvas(report) {

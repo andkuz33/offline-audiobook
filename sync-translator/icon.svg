@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" role="img" aria-label="Синхронный переводчик">
+  <rect width="192" height="192" rx="40" fill="#0f172a"/>
+  <circle cx="96" cy="84" r="52" fill="none" stroke="#38bdf8" stroke-width="8"/>
+  <path d="M96 32v104M44 84h104" stroke="#38bdf8" stroke-width="6" stroke-linecap="round"/>
+  <path d="M96 32c20 18 20 86 0 104M96 32c-20 18-20 86 0 104" fill="none" stroke="#38bdf8" stroke-width="6"/>
+  <path d="M70 150h52" stroke="#0ea5e9" stroke-width="8" stroke-linecap="round"/>
+  <path d="M96 136v24" stroke="#0ea5e9" stroke-width="8" stroke-linecap="round"/>
+</svg>

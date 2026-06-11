@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="Синхронный переводчик — распознавание речи, перевод и озвучивание в реальном времени прямо в браузере." />
+  <title>Синхронный переводчик</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Синхронный переводчик</h1>
+    <button id="aboutBtn" class="ghost" type="button" aria-haspopup="dialog">О&nbsp;программе</button>
+  </header>
+
+  <main class="app">
+    <section class="langbar" aria-label="Выбор языков">
+      <label class="lang">
+        <span>С языка</span>
+        <select id="sourceLang"></select>
+      </label>
+      <button id="swapBtn" class="swap" type="button" title="Поменять языки местами" aria-label="Поменять языки местами">⇄</button>
+      <label class="lang">
+        <span>На язык</span>
+        <select id="targetLang"></select>
+      </label>
+    </section>
+
+    <section class="controls" aria-label="Управление">
+      <button id="micBtn" class="mic" type="button" aria-pressed="false">
+        <span class="mic-icon" aria-hidden="true">🎙️</span>
+        <span class="mic-label">Говорите</span>
+      </button>
+
+      <div class="toggles">
+        <label class="toggle">
+          <input type="checkbox" id="continuousToggle" checked />
+          <span>Непрерывный режим</span>
+        </label>
+        <label class="toggle">
+          <input type="checkbox" id="speakToggle" checked />
+          <span>Озвучивать перевод</span>
+        </label>
+      </div>
+    </section>
+
+    <p id="status" class="status" role="status" aria-live="polite">Готово к работе.</p>
+
+    <section class="live" aria-label="Текущая фраза">
+      <div class="live-original" id="liveOriginal" lang=""></div>
+      <div class="live-translation" id="liveTranslation" lang=""></div>
+    </section>
+
+    <section class="history" aria-label="История перевода">
+      <div class="history-head">
+        <h2>История</h2>
+        <button id="clearBtn" class="ghost" type="button">Очистить</button>
+      </div>
+      <ul id="historyList" class="history-list"></ul>
+      <p id="emptyHint" class="empty-hint">Нажмите «Говорите» и произнесите фразу — перевод появится здесь.</p>
+    </section>
+  </main>
+
+  <dialog id="aboutDialog" class="about">
+    <h2>Синхронный переводчик</h2>
+    <p>Приложение слушает вашу речь, распознаёт её, переводит на выбранный язык и при желании озвучивает перевод — в реальном времени, прямо в браузере.</p>
+    <ul>
+      <li><strong>Распознавание речи</strong> — Web Speech API браузера.</li>
+      <li><strong>Перевод</strong> — бесплатный сервис MyMemory (нужен интернет).</li>
+      <li><strong>Озвучивание</strong> — встроенный синтез речи браузера.</li>
+    </ul>
+    <p class="note">Лучше всего работает в Google Chrome или Microsoft Edge на компьютере и Android. Для распознавания речи требуется доступ к микрофону и подключение к интернету.</p>
+    <p class="note">Никакие записи не сохраняются на сервере. Текст для перевода отправляется в сервис MyMemory.</p>
+    <button id="closeAbout" class="primary" type="button">Понятно</button>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

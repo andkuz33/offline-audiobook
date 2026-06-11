@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="Синхронный переводчик речи на Gemini Live: EN/ZH ⇄ RU прямо в браузере, перевод в наушник." />
+  <title>Синхронный переводчик</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Синхронный переводчик</h1>
+    <button id="settingsBtn" class="ghost" type="button">⚙︎ Ключ</button>
+  </header>
+
+  <main class="app">
+    <p id="status" class="status" role="status" aria-live="polite">Введите ключ Gemini и нажмите «Слушать».</p>
+
+    <!-- Режим «Слушаю окружающих»: EN/ZH → RU в наушник -->
+    <button id="listenBtn" class="big listen" type="button" aria-pressed="false">
+      <span class="big-icon" aria-hidden="true">👂</span>
+      <span class="big-title">Слушать окружающих</span>
+      <span class="big-sub">EN / ZH → русский в наушник</span>
+    </button>
+
+    <section class="subtitles" aria-label="Субтитры">
+      <div id="subSource" class="sub-source"></div>
+      <div id="subTarget" class="sub-target"></div>
+    </section>
+
+    <!-- Режим «Говорю»: RU → EN/ZH в динамик -->
+    <section class="speak" aria-label="Сказать собеседнику">
+      <div class="seg" role="group" aria-label="Язык собеседника">
+        <button class="seg-btn is-active" data-target="EN" type="button">EN</button>
+        <button class="seg-btn" data-target="ZH" type="button">中文</button>
+      </div>
+      <p class="hint">Моя речь (RU) → <span id="targetName">Английский</span>, в динамик телефона</p>
+      <button id="speakBtn" class="big speak-btn" type="button">
+        <span class="big-icon" aria-hidden="true">🎙️</span>
+        <span class="big-title">Зажмите, чтобы говорить</span>
+      </button>
+    </section>
+  </main>
+
+  <dialog id="settingsDialog" class="settings">
+    <h2>Ключ Gemini API</h2>
+    <p>Получите ключ в <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>. Он хранится только в этом браузере (localStorage) и отправляется напрямую в Google.</p>
+    <input id="apiKeyInput" type="password" placeholder="AIza…" autocomplete="off" />
+    <label class="note"><input type="checkbox" id="showKey" /> показать ключ</label>
+    <p class="note">⚠️ Ключ виден в браузере. Для личного пользования это нормально; для публичного сервиса нужен серверный прокси.</p>
+    <div class="settings-actions">
+      <button id="saveKey" class="primary" type="button">Сохранить</button>
+      <button id="closeSettings" class="ghost" type="button">Закрыть</button>
+    </div>
+  </dialog>
+
+  <script src="gemini-live.js"></script>
+  <script src="audio.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

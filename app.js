@@ -71,6 +71,7 @@ async function init() {
   try {
     state.db = await openDatabase();
     state.books = await loadBooks();
+    await migrateTitles();
     bindEvents();
     renderLibrary();
     configureMediaSession();
@@ -174,7 +175,7 @@ async function handleFileSelection(event) {
     const id = crypto.randomUUID ? crypto.randomUUID() : String(Date.now());
     const book = {
       id,
-      title: stripExtension(file.name),
+      title: prettifyTitle(file.name),
       duration,
       currentPosition: 0,
       playbackRate: 1,
@@ -891,6 +892,16 @@ function loadBooks() {
   return requestFromStore(BOOK_STORE, "readonly", store => store.getAll()).then(result => result || []);
 }
 
+// Чистит заголовки ранее загруженных книг с подчёркиваниями в имени.
+async function migrateTitles() {
+  for (const book of state.books) {
+    if (typeof book.title === "string" && book.title.includes("_")) {
+      book.title = prettifyTitle(book.title);
+      await saveBook(book);
+    }
+  }
+}
+
 function saveBook(book) {
   return requestFromStore(BOOK_STORE, "readwrite", store => store.put({ ...book }));
 }
@@ -1075,6 +1086,19 @@ function formatDurationHuman(seconds) {
 
 function stripExtension(name) {
   return name.replace(/\.[^/.]+$/, "");
+}
+
+// Делает из имени файла читаемый заголовок: убирает расширение,
+// меняет подчёркивания/точки на пробелы, схлопывает пробелы и
+// делает первую букву заглавной.
+function prettifyTitle(name) {
+  const cleaned = stripExtension(String(name))
+    .replace(/[_]+/g, " ")
+    .replace(/\s*\.\s*/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return stripExtension(String(name));
+  return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }
 
 function clamp(value, min, max) {

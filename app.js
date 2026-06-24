@@ -51,6 +51,11 @@ const elements = {
   aboutButton: document.querySelector("#aboutButton"),
   aboutDialog: document.querySelector("#aboutDialog"),
   aboutClose: document.querySelector("#aboutClose"),
+  renameButton: document.querySelector("#renameButton"),
+  renameDialog: document.querySelector("#renameDialog"),
+  renameInput: document.querySelector("#renameInput"),
+  renameSave: document.querySelector("#renameSave"),
+  renameCancel: document.querySelector("#renameCancel"),
   audio: document.querySelector("#audio"),
   toast: document.querySelector("#toast")
 };
@@ -91,6 +96,9 @@ function bindEvents() {
   elements.reportButton.addEventListener("click", openReport);
   elements.addBookmarkButton.addEventListener("click", addBookmark);
   elements.aboutButton.addEventListener("click", openAbout);
+  elements.renameButton.addEventListener("click", () => {
+    if (state.currentBook) renameBook(state.currentBook.id);
+  });
   elements.aboutClose.addEventListener("click", () => {
     if (elements.aboutDialog.open) elements.aboutDialog.close();
   });
@@ -809,10 +817,14 @@ function renderBookCard(book) {
         <span>Последнее прослушивание: ${formatRelativeDate(book.lastOpenedAt)}</span>
       </div>
     </button>
-    <button type="button" class="danger-button">Удалить</button>
+    <div class="book-card-actions">
+      <button type="button" class="icon-button" aria-label="Переименовать книгу" title="Переименовать">✎</button>
+      <button type="button" class="danger-button">Удалить</button>
+    </div>
   `;
 
   card.querySelector(".book-card-main").addEventListener("click", () => openBook(book.id));
+  card.querySelector(".icon-button").addEventListener("click", () => renameBook(book.id));
   card.querySelector(".danger-button").addEventListener("click", () => deleteBook(book.id));
   return card;
 }
@@ -832,6 +844,73 @@ async function deleteBook(id) {
   await deleteBookRecord(id);
   state.books = state.books.filter(item => item.id !== id);
   renderLibrary();
+}
+
+async function renameBook(id) {
+  const book = state.books.find(item => item.id === id) || (state.currentBook?.id === id ? state.currentBook : null);
+  if (!book) return;
+  const next = await openRenameDialog(book.title || "");
+  if (next === null) return;
+  const title = next.trim();
+  if (!title || title === book.title) return;
+
+  book.title = title;
+  await saveBook(book);
+  const index = state.books.findIndex(item => item.id === id);
+  if (index >= 0) state.books[index] = { ...state.books[index], title };
+  if (state.currentBook?.id === id) {
+    state.currentBook.title = title;
+    elements.playerTitle.textContent = title;
+    if ("mediaSession" in navigator && navigator.mediaSession.metadata) {
+      navigator.mediaSession.metadata.title = title;
+    }
+  }
+  renderLibrary();
+  showToast("Название обновлено.");
+  window.setTimeout(hideToast, 1500);
+}
+
+// Промис-обёртка над модалкой переименования. Возвращает строку или null при отмене.
+function openRenameDialog(value) {
+  return new Promise(resolve => {
+    const dialog = elements.renameDialog;
+    if (!dialog || typeof dialog.showModal !== "function") {
+      const fallback = prompt("Новое название книги", value || "");
+      resolve(fallback === null ? null : fallback);
+      return;
+    }
+
+    elements.renameInput.value = value || "";
+
+    const finish = result => {
+      elements.renameSave.removeEventListener("click", onSave);
+      elements.renameCancel.removeEventListener("click", onCancel);
+      elements.renameInput.removeEventListener("keydown", onKey);
+      dialog.removeEventListener("cancel", onCancel);
+      if (dialog.open) dialog.close();
+      resolve(result);
+    };
+    const onSave = () => finish(elements.renameInput.value);
+    const onCancel = event => {
+      event?.preventDefault?.();
+      finish(null);
+    };
+    const onKey = event => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        onSave();
+      }
+    };
+
+    elements.renameSave.addEventListener("click", onSave);
+    elements.renameCancel.addEventListener("click", onCancel);
+    elements.renameInput.addEventListener("keydown", onKey);
+    dialog.addEventListener("cancel", onCancel);
+
+    dialog.showModal();
+    elements.renameInput.focus();
+    elements.renameInput.select();
+  });
 }
 
 function configureMediaSession() {

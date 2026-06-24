@@ -294,6 +294,14 @@ h1 {
   min-width: 0;
 }
 
+.player-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-width: 0;
+}
+
 .player-main h2 {
   font-size: clamp(1.8rem, 5vw, 3rem);
   line-height: 1.1;
@@ -302,6 +310,26 @@ h1 {
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+}
+
+.icon-button {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--line);
+  font-size: 1.1rem;
+}
+
+.book-card-actions {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  justify-items: end;
 }
 
 .slider {
@@ -501,6 +529,16 @@ h1 {
   color: var(--text);
   resize: vertical;
   line-height: 1.45;
+}
+
+.modal-input {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
 }
 
 .modal-actions {

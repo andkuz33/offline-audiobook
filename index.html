@@ -58,7 +58,10 @@
       </section>
 
       <section class="player-main">
-        <h2 id="playerTitle"></h2>
+        <div class="player-title-row">
+          <h2 id="playerTitle"></h2>
+          <button id="renameButton" type="button" class="icon-button" aria-label="Переименовать книгу" title="Переименовать">✎</button>
+        </div>
 
         <input id="progressSlider" class="slider" type="range" min="0" max="1" step="0.1" value="0" aria-label="Прогресс">
         <div class="time-row">
@@ -98,6 +101,17 @@
       <div class="modal-actions">
         <button type="button" id="bookmarkCancel" class="ghost-button">Отмена</button>
         <button type="button" id="bookmarkSave" class="primary-button">Сохранить</button>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog id="renameDialog" class="modal">
+    <div class="modal-card">
+      <h3>Переименовать книгу</h3>
+      <input id="renameInput" class="modal-input" type="text" maxlength="200" placeholder="Название книги" autocomplete="off">
+      <div class="modal-actions">
+        <button type="button" id="renameCancel" class="ghost-button">Отмена</button>
+        <button type="button" id="renameSave" class="primary-button">Сохранить</button>
       </div>
     </div>
   </dialog>
